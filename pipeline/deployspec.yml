@@ -1,0 +1,54 @@
+#
+# deployspec.yml
+#
+
+version: 0.2
+
+env:
+  variables:
+    drupal_host: drupal.lib.virginia.edu
+    drupal_user: bamboo
+    drupal_key: build-deploy-scripts/keys/bamboo_deploy
+    target_host_name: library-legacy-dev-private.internal.lib.virginia.edu
+    target_host_user: aws_deploy
+    target_host_root_fs: /mnt/wwwstatic
+
+phases:
+  install:
+    runtime-versions:
+      nodejs: 10
+      golang: 1.x
+      python: 3.x
+#    commands:
+
+  pre_build:
+    commands:
+      # update
+      - apt-get update -y
+      - apt-get install -y ccrypt
+      # get the terraform repo and decrypt the access key
+      - git clone https://$GITLAB_USER:$GITLAB_TOKEN@gitlab.com/uvalib/terraform-infrastructure.git
+      - $CODEBUILD_SRC_DIR/terraform-infrastructure/scripts/decrypt-key.ksh terraform-infrastructure/global/private-keys/aws_deploy.pem.cpt global/private-keys/aws_deploy.pem
+      - PRIVATE_KEY=$CODEBUILD_SRC_DIR/terraform-infrastructure/global/private-keys/aws_deploy.pem
+      - chmod 600 $PRIVATE_KEY
+      # clone legacy build deploy scripts and core-site repos
+      - git clone https://$GITLAB_USER:$GITLAB_TOKEN@gitlab.com/uvalib/build-deploy-scripts.git
+      - git clone https://$GITHUB_USER:$GITHUB_TOKEN@github.com/uvalib/core-site
+
+  build:
+    commands:
+      - cd $CODEBUILD_SRC_DIR/core-site
+      - npm install
+      - node import-pages.js
+      - chmod 600 $CODEBUILD_SRC_DIR/$drupal_key
+      - scp -r -C -oStrictHostKeyChecking=accept-new -i $CODEBUILD_SRC_DIR/$drupal_key $drupal_user@$drupal_host:/usr/share/drupal/sites/default/files/ .
+      - node imagemin-files.js
+      - rsync -avh files-ready/ files
+      #- rsync -ah --no-perms --omit-dir-times -e "ssh -oStrictHostKeyChecking=accept-new -i $PRIVATE_KEY -l $target_host_user" $CODEBUILD_SRC_DIR/core-site/files/ $target_host_user@$target_host_name:$target_host_root_fs/files
+
+#  post_build:
+#    commands:
+
+#
+# end of file
+#
