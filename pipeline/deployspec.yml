@@ -16,7 +16,7 @@ env:
 phases:
   install:
     runtime-versions:
-      nodejs: 10
+      nodejs: 16
       golang: 1.x
       python: 3.x
 #    commands:
